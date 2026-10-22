@@ -47,19 +47,20 @@ export default function App() {
     setTimeout(() => { ble.stopDeviceScan(); setStatus('Tarama tamamlandı'); }, 7000);
   };
 
-  const toggleTalk = async () => {
+  const beginTalk = async () => {
     if (!permissionState.mic) return Alert.alert('Mikrofon izni gerekli', 'Bas-konuş için mikrofon erişimini Ayarlar’dan etkinleştirin.');
-    setTalking((value) => !value);
-    setStatus(talking ? 'Hazır' : `${current.title} kanalında konuşuyorsunuz`);
-    await Notifications.scheduleNotificationAsync({ content: { title: talking ? 'QTalK' : 'Bas-konuş aktif', body: talking ? 'Kanal hazır.' : `${current.title} kanalına ses gönderiliyor.` }, trigger: null });
+    setTalking(true);
+    setStatus(`${current.title} kanalında konuşuyorsunuz`);
+    await Notifications.scheduleNotificationAsync({ content: { title: 'Bas-konuş aktif', body: `${current.title} kanalına ses gönderiliyor.` }, trigger: null });
   };
+  const endTalk = () => { setTalking(false); setStatus('Hazır'); };
 
   return <SafeAreaView style={styles.safe}>
     <StatusBar barStyle="light-content" />
     <View style={styles.header}><View><Text style={styles.eyebrow}>QTalK / GÜVENLİ İLETİŞİM</Text><Text style={styles.title}>Konuşmaya hazır.</Text></View><View style={styles.avatar}><Text style={styles.avatarText}>TS</Text></View></View>
     <View style={styles.statusRow}><View style={[styles.dot, { backgroundColor: current.color }]} /><Text style={styles.statusText}>{status}</Text><Text style={styles.encryption}>UÇTAN UCA HAZIR</Text></View>
     <FlatList data={channels} keyExtractor={(item) => item.id} horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.channelList} renderItem={({ item }) => <Pressable onPress={() => item.id === 'nearby' ? startScan() : setActive(item.id)} style={[styles.channelCard, active === item.id && styles.channelCardActive]}><View style={[styles.channelIcon, { backgroundColor: `${item.color}20` }]}><Ionicons name={item.id === 'nearby' ? 'bluetooth' : 'radio'} size={20} color={item.color} /></View><Text style={styles.channelTitle}>{item.title}</Text><Text style={styles.channelSubtitle}>{item.subtitle}</Text></Pressable>} />
-    <View style={styles.talkPanel}><Text style={styles.talkLabel}>BAS-KONUŞ</Text><Text style={styles.talkChannel}>{current.title}</Text><Pressable onPress={toggleTalk} onPressIn={() => !talking && toggleTalk()} onPressOut={() => talking && toggleTalk()} style={[styles.talkButton, talking && styles.talkButtonActive]}><Ionicons name={talking ? 'radio' : 'mic'} size={42} color="#07111F" /><Text style={styles.talkButtonText}>{talking ? 'KONUŞUYOR' : 'BASILI TUT'}</Text></Pressable><Text style={styles.hint}>{talking ? 'Sesiniz kanala iletiliyor' : 'Kanalı seçin ve düğmeye basın'}</Text></View>
+    <View style={styles.talkPanel}><Text style={styles.talkLabel}>BAS-KONUŞ</Text><Text style={styles.talkChannel}>{current.title}</Text><Pressable onPressIn={beginTalk} onPressOut={endTalk} style={[styles.talkButton, talking && styles.talkButtonActive]}><Ionicons name={talking ? 'radio' : 'mic'} size={42} color="#07111F" /><Text style={styles.talkButtonText}>{talking ? 'KONUŞUYOR' : 'BASILI TUT'}</Text></Pressable><Text style={styles.hint}>{talking ? 'Sesiniz kanala iletiliyor' : 'Kanalı seçin ve düğmeye basın'}</Text></View>
     {active === 'nearby' && <View style={styles.panel}><View style={styles.panelHeader}><Text style={styles.panelTitle}>Yakındaki cihazlar</Text><Pressable onPress={startScan}><Text style={styles.link}>YENİLE</Text></Pressable></View>{nearby.length === 0 ? <Text style={styles.muted}>Bluetooth ile QTalK cihazları aranıyor…</Text> : nearby.map((device) => <View key={device.id} style={styles.deviceRow}><Ionicons name="bluetooth" size={18} color="#8796FF" /><Text style={styles.deviceName}>{device.name}</Text><Pressable onPress={() => Alert.alert('Bağlantı isteği', `${device.name} cihazına istek gönderildi.`)}><Text style={styles.link}>BAĞLAN</Text></Pressable></View>)}</View>}
     <View style={styles.panel}><View style={styles.panelHeader}><Text style={styles.panelTitle}>Kişiler</Text><Text style={styles.muted}>{contacts.length} kayıt</Text></View>{contacts.slice(0, 3).map((contact, index) => <View key={contact.id || index} style={styles.deviceRow}><View style={styles.contactBubble}><Text style={styles.contactInitial}>{(contact.name || '?')[0]}</Text></View><Text style={styles.deviceName}>{contact.name || 'İsimsiz kişi'}</Text><Ionicons name="chevron-forward" size={18} color="#62738D" /></View>)}{!permissionState.contacts && <Text style={styles.muted}>Kişi listesi izni verilmedi.</Text>}</View>
     <View style={styles.permissions}><Text style={styles.permissionText}>Mikrofon {permissionState.mic ? 'aktif' : 'bekliyor'} · Bildirimler {permissionState.notifications ? 'aktif' : 'bekliyor'} · Bluetooth hazır</Text></View>
