@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Animated, Easing, FlatList, Modal, Pressable, SafeAreaView, Share, StatusBar, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, Animated, Easing, FlatList, Linking, Modal, Pressable, SafeAreaView, Share, StatusBar, StyleSheet, Text, TextInput, View } from 'react-native';
 import * as Contacts from 'expo-contacts';
 import * as Notifications from 'expo-notifications';
 import { Audio } from 'expo-av';
@@ -126,7 +126,7 @@ export default function App() {
       </View>
     )}
     <View style={styles.bottomBar}><Tab icon="bluetooth" label="Bluetooth" active={page === 'bluetooth'} onPress={() => setPage('bluetooth')} /><Tab icon="people" label="Kişiler" active={page === 'contacts'} onPress={() => setPage('contacts')} /><Tab icon="chatbubbles" label="Sohbet" active={page === 'chats' || page === 'chat'} onPress={() => setPage('chats')} /></View>
-    <Modal visible={drawer} transparent animationType="none" onRequestClose={() => setDrawer(false)}><Pressable style={styles.drawerOverlay} onPress={() => setDrawer(false)}><View style={styles.drawer}><View style={styles.drawerBrand}><View style={styles.brandMark}><Ionicons name="radio" size={13} color="#07111F" /></View><Text style={styles.brand}>QTALK</Text></View><Text style={styles.drawerVersion}>Sürüm {APP_VERSION}</Text><View style={styles.drawerLine} /><DrawerItem icon="logo-github" label="GitHub reposu" onPress={() => Share.share({ message: REPO_URL })} /><DrawerItem icon="document-text" label="Gizlilik politikası" onPress={() => Share.share({ message: PRIVACY_URL })} /><DrawerItem icon="download" label="Güncellemeleri kontrol et" onPress={() => { setDrawer(false); checkForUpdate(); Alert.alert('Güncelleme kontrolü', 'QTalK güncel sürüm kontrolü tamamlandı.'); }} /><DrawerItem icon="share-social" label="QTalK’ı davet et" onPress={() => invite()} /></View></Pressable></Modal>
+    <Modal visible={drawer} transparent animationType="none" onRequestClose={() => setDrawer(false)}><Pressable style={styles.drawerOverlay} onPress={() => setDrawer(false)}><View style={styles.drawer}><View style={styles.drawerBrand}><View style={styles.brandMark}><Ionicons name="radio" size={13} color="#07111F" /></View><Text style={styles.brand}>QTALK</Text></View><Text style={styles.drawerVersion}>Sürüm {APP_VERSION}</Text><View style={styles.drawerLine} /><DrawerItem icon="logo-github" label="GitHub reposu" onPress={() => { setDrawer(false); Linking.openURL(REPO_URL); }} /><DrawerItem icon="document-text" label="Gizlilik politikası" onPress={() => { setDrawer(false); Linking.openURL(PRIVACY_URL); }} /><DrawerItem icon="download" label="Güncellemeleri kontrol et" onPress={() => { setDrawer(false); checkForUpdate(); Alert.alert('Güncelleme kontrolü', 'QTalK güncel sürüm kontrolü tamamlandı.'); }} /><DrawerItem icon="share-social" label="QTalK’ı davet et" onPress={() => invite()} /></View></Pressable></Modal>
   </SafeAreaView>;
 }
 
