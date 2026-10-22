@@ -6,6 +6,16 @@
 
 Bu repo, QTalK’ın ilk çalışan yerel prototipidir. Arayüz ve Android izin akışları hazırdır. Cloudflare Worker + D1 backend kaynakları `functions/` ve `cloudflare/` altındadır.
 
+## Android APK indir
+
+Doğrudan indirme: [QTalK v0.1.0 APK](https://github.com/tamersariii/qtalk/releases/download/v0.1.0/app-release.apk)
+
+Telefon kamerasıyla taramak için:
+
+![QTalK APK indirme QR kodu](assets/qtalk-apk-qr.png)
+
+Alternatif olarak [GitHub Release sayfasını](https://github.com/tamersariii/qtalk/releases/tag/v0.1.0) açabilirsiniz.
+
 ## Kurulum
 
 ```bash
