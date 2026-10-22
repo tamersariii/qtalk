@@ -3,8 +3,10 @@
 QTalK API Worker, her kanal için bir Cloudflare Durable Object odası açar:
 
 ```text
-wss://<worker-domain>/ws/<channelId>?userId=<id>&name=<display-name>
+wss://qtalk-api.1onplayer.workers.dev/ws/<channelId>?userId=<id>&name=<display-name>
 ```
+
+Canlı health kontrolü: <https://qtalk-api.1onplayer.workers.dev/health>
 
 ## Sinyal mesajları
 
