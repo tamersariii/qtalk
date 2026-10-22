@@ -6,6 +6,8 @@
 
 Bu repo, QTalK’ın ilk çalışan yerel prototipidir. Arayüz ve Android izin akışları hazırdır. Cloudflare Worker + D1 backend kaynakları `functions/` ve `cloudflare/` altındadır.
 
+Gerçek zamanlı kanal sinyalizasyonu için Cloudflare Durable Objects tabanlı hibernation WebSocket katmanı `/ws/:channelId` uç noktasına eklendi. Ayrıntılar: [Gerçek zamanlı iletişim](docs/REALTIME.md).
+
 ## Android APK indir
 
 Doğrudan indirme: [QTalK v0.1.0 APK](https://github.com/tamersariii/qtalk/releases/download/v0.1.0/app-release.apk)

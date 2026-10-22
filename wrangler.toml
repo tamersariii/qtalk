@@ -8,5 +8,13 @@ database_name = "qtalk-db"
 database_id = "05284561-fb7f-4279-84dd-061546979553"
 migrations_dir = "cloudflare/migrations"
 
+[[durable_objects.bindings]]
+name = "QTALK_ROOMS"
+class_name = "QTalkRoom"
+
+[[migrations]]
+tag = "v1"
+new_classes = ["QTalkRoom"]
+
 [observability]
 enabled = true
