@@ -35,7 +35,7 @@ module.exports = {
       'expo-av'
     ],
     extra: {
-      apiUrl: process.env.QTALK_API_URL || 'https://qtalk-api.example.workers.dev'
+      apiUrl: process.env.QTALK_API_URL || 'https://qtalk-api.1onplayer.workers.dev'
     }
   }
 };
