@@ -32,7 +32,8 @@ module.exports = {
     plugins: [
       'expo-notifications',
       'expo-contacts',
-      'expo-av'
+      'expo-av',
+      '@config-plugins/react-native-webrtc'
     ],
     extra: {
       apiUrl: process.env.QTALK_API_URL || 'https://qtalk-api.1onplayer.workers.dev'
