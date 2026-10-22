@@ -26,7 +26,8 @@ module.exports = {
         'BLUETOOTH_CONNECT',
         'ACCESS_FINE_LOCATION',
         'READ_CONTACTS',
-        'POST_NOTIFICATIONS'
+        'POST_NOTIFICATIONS',
+        'REQUEST_INSTALL_PACKAGES'
       ]
     },
     plugins: [

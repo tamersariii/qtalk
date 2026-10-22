@@ -1,187 +1,138 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Animated, Easing, FlatList, Pressable, SafeAreaView, StatusBar, StyleSheet, Text, View } from 'react-native';
+import { Alert, Animated, Easing, FlatList, Modal, Pressable, SafeAreaView, Share, StatusBar, StyleSheet, Text, TextInput, View } from 'react-native';
 import * as Contacts from 'expo-contacts';
 import * as Notifications from 'expo-notifications';
 import { Audio } from 'expo-av';
 import { Ionicons } from '@expo/vector-icons';
 import { BleManager } from 'react-native-ble-plx';
+import * as FileSystem from 'expo-file-system';
+import * as IntentLauncher from 'expo-intent-launcher';
 import { createPushToTalkSession } from './src/webrtc';
 
 const ble = new BleManager();
-const channels = [
-  { id: 'team', title: 'Saha Ekibi', subtitle: '4 kişi çevrimiçi', color: '#36D6C5', online: true },
-  { id: 'dispatch', title: 'Merkez', subtitle: 'Güvenli kanal', color: '#FFA76B', online: true },
-  { id: 'nearby', title: 'Yakındaki cihazlar', subtitle: 'Bluetooth taraması', color: '#8796FF', online: false }
-];
-
-function PulseRing({ size, color, scale, opacity }) {
-  return <Animated.View pointerEvents="none" style={[styles.pulseRing, { width: size, height: size, borderRadius: size / 2, borderColor: color, transform: [{ scale }], opacity }]} />;
-}
+const APP_VERSION = '0.1.0';
+const APK_URL = 'https://github.com/tamersariii/qtalk/releases/download/v0.1.0/qtalk-webrtc.apk';
+const REPO_URL = 'https://github.com/tamersariii/qtalk';
+const PRIVACY_URL = 'https://github.com/tamersariii/qtalk/blob/master/docs/PRIVACY.md';
+const API_URL = 'https://qtalk-api.1onplayer.workers.dev';
 
 function WaveBars({ active }) {
-  const bars = useRef(Array.from({ length: 5 }, () => new Animated.Value(0.45))).current;
+  const bars = useRef(Array.from({ length: 5 }, () => new Animated.Value(.45))).current;
+  useEffect(() => { const loops = bars.map((bar, i) => Animated.loop(Animated.sequence([Animated.timing(bar, { toValue: active ? 1 : .45, duration: 240 + i * 30, useNativeDriver: true }), Animated.timing(bar, { toValue: .35, duration: 260, useNativeDriver: true })]))); loops.forEach(x => x.start()); return () => loops.forEach(x => x.stop()); }, [active, bars]);
+  return <View style={styles.wave}>{bars.map((bar, i) => <Animated.View key={i} style={[styles.waveBar, { transform: [{ scaleY: bar }], backgroundColor: active ? '#07111F' : '#36D6C5' }]} />)}</View>;
+}
+
+function BluetoothPage({ devices, scanning, message, connected, pairingId, onScan, onConnect, onDisconnect, onStartChat, onCheck }) {
+  const rotation = useRef(new Animated.Value(0)).current;
   useEffect(() => {
-    const animations = bars.map((bar, index) => Animated.loop(Animated.sequence([
-      Animated.timing(bar, { toValue: active ? 1 : 0.45 + (index % 2) * 0.08, duration: 260 + index * 38, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
-      Animated.timing(bar, { toValue: active ? 0.35 : 0.45, duration: 260 + index * 28, easing: Easing.inOut(Easing.ease), useNativeDriver: true })
-    ])));
-    animations.forEach((animation) => animation.start());
-    return () => animations.forEach((animation) => animation.stop());
-  }, [active, bars]);
-  return <View style={styles.wave}>{bars.map((bar, index) => <Animated.View key={index} style={[styles.waveBar, { backgroundColor: active ? '#07111F' : '#36D6C5', transform: [{ scaleY: bar }] }]} />)}</View>;
+    if (!scanning) return undefined;
+    const loop = Animated.loop(Animated.timing(rotation, { toValue: 1, duration: 1500, easing: Easing.linear, useNativeDriver: true }));
+    loop.start();
+    return () => loop.stop();
+  }, [scanning, rotation]);
+  const spin = rotation.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] });
+  const signal = (rssi) => rssi >= -60 ? '#36D6C5' : rssi >= -75 ? '#BDEB72' : rssi >= -90 ? '#FFA76B' : '#FF7C91';
+  const sortedDevices = [...devices].sort((a, b) => b.rssi - a.rssi);
+  return (
+    <View style={styles.page}>
+      <View style={styles.pageHeader}>
+        <View><Text style={styles.pageEyebrow}>YAKIN ALAN</Text><Text style={styles.pageTitle}>Bluetooth</Text></View>
+        <View style={styles.bluetoothStatus}><View style={[styles.statusDot, { backgroundColor: scanning ? '#FFA76B' : '#36D6C5' }]} /><Text style={styles.statusSmall}>{scanning ? 'TARANIYOR' : 'HAZIR'}</Text></View>
+      </View>
+      <View style={styles.scanHero}>
+        <View style={styles.scanGraphic}>{scanning && <Animated.View style={[styles.scanOrbit, { transform: [{ rotate: spin }] }]} />}<View style={[styles.bluetoothCircle, scanning && styles.bluetoothCircleActive]}><Ionicons name="bluetooth" size={39} color={scanning ? '#FFA76B' : '#8796FF'} /></View></View>
+        <Text style={styles.scanTitle}>{scanning ? 'Yakındaki cihazlar aranıyor' : 'Cihaz keşfine hazır'}</Text><Text style={styles.scanMessage}>{message}</Text>
+        <Pressable style={[styles.primaryButton, scanning && styles.stopButton]} onPress={onScan}><Ionicons name={scanning ? 'stop' : 'scan'} size={16} color="#07111F" /><Text style={styles.primaryButtonText}>{scanning ? 'TARAMAYI DURDUR' : 'BLUETOOTH TARA'}</Text></Pressable>
+        <Pressable onPress={onCheck}><Text style={styles.secondaryLink}>Bluetooth ayarlarını kontrol et</Text></Pressable>
+      </View>
+      {connected && <View style={styles.connectedCard}><View style={styles.connectedIcon}><Ionicons name="link" size={17} color="#07111F" /></View><View style={styles.flex}><Text style={styles.cardEyebrow}>BAĞLI CİHAZ</Text><Text style={styles.cardTitle}>{connected.name}</Text><Text style={styles.deviceId}>{connected.id}</Text></View><Pressable onPress={() => onStartChat(connected)} style={styles.chatLaunch}><Ionicons name="chatbubble-ellipses" size={14} color="#07111F" /></Pressable><Pressable onPress={onDisconnect}><Text style={styles.dangerLink}>KES</Text></Pressable></View>}
+      <View style={styles.listPanel}>
+        <View style={styles.panelHeader}><View><Text style={styles.panelTitle}>Bulunan cihazlar</Text><Text style={styles.panelCaption}>{devices.length} cihaz · sinyal gücüne göre sıralı</Text></View><Ionicons name="options-outline" size={18} color="#62738D" /></View>
+        {devices.length === 0 ? (
+          <View style={styles.empty}><Ionicons name="radio-outline" size={26} color="#52647D" /><Text style={styles.muted}>Tarama başlatarak cihazları görüntüleyin</Text></View>
+        ) : (
+          <FlatList data={sortedDevices} keyExtractor={(item) => item.id} renderItem={({ item }) => (
+            <View style={styles.deviceCard}><View style={[styles.deviceIcon, { backgroundColor: `${signal(item.rssi)}20` }]}><Ionicons name="bluetooth" size={19} color={signal(item.rssi)} /></View><View style={styles.flex}><Text style={styles.cardTitle}>{item.name}</Text><Text style={styles.deviceId}>{item.id}</Text><Text style={[styles.rssi, { color: signal(item.rssi) }]}>{item.rssi} dBm · {item.rssi >= -75 ? 'Güçlü sinyal' : 'Zayıf sinyal'}</Text></View><Pressable disabled={Boolean(connected) || pairingId === item.id} onPress={() => onConnect(item)} style={[styles.outlineButton, pairingId === item.id && styles.pairingButton]}><Text style={styles.outlineButtonText}>{pairingId === item.id ? 'İSTEK…' : 'EŞLEŞTİR'}</Text></Pressable></View>
+          )} />
+        )}
+      </View>
+    </View>
+  );
 }
 
 export default function App() {
-  const [active, setActive] = useState('team');
+  const [page, setPage] = useState('chats');
+  const [drawer, setDrawer] = useState(false);
   const [talking, setTalking] = useState(false);
-  const [permissionState, setPermissionState] = useState({ mic: false, notifications: false, contacts: false, bluetooth: false });
-  const [nearby, setNearby] = useState([]);
   const [contacts, setContacts] = useState([]);
-  const [status, setStatus] = useState('Hazır');
+  const [devices, setDevices] = useState([]);
   const [scanning, setScanning] = useState(false);
   const [pairingId, setPairingId] = useState(null);
-  const [connectedDevice, setConnectedDevice] = useState(null);
+  const [connected, setConnected] = useState(null);
   const [bluetoothMessage, setBluetoothMessage] = useState('Yakındaki QTalK cihazlarını keşfedin');
-  const [webrtcStatus, setWebrtcStatus] = useState('Ses bağlantısı hazır');
-  const scanRef = useRef(null);
-  const scanTimerRef = useRef(null);
-  const audioSessionRef = useRef(null);
-  const userIdRef = useRef(`user-${Math.random().toString(36).slice(2, 10)}`);
-  const buttonScale = useRef(new Animated.Value(1)).current;
-  const ringOne = useRef(new Animated.Value(0.86)).current;
-  const ringTwo = useRef(new Animated.Value(0.72)).current;
-  const idleGlow = useRef(new Animated.Value(0.96)).current;
+  const [bluetoothState, setBluetoothState] = useState('Unknown');
+  const [permissionState, setPermissionState] = useState({ mic: false, notifications: false, contacts: false });
+  const [chats, setChats] = useState([]);
+  const [selectedChat, setSelectedChat] = useState(null);
+  const [chatText, setChatText] = useState('');
+  const [update, setUpdate] = useState(null);
+  const scanTimer = useRef(null);
+  const audioSession = useRef(null);
+  const userId = useRef(`user-${Math.random().toString(36).slice(2, 10)}`);
 
   useEffect(() => {
-    (async () => {
-      const mic = await Audio.requestPermissionsAsync();
-      const notifications = await Notifications.requestPermissionsAsync();
-      const contactsPermission = await Contacts.requestPermissionsAsync();
-      setPermissionState({ mic: mic.granted, notifications: notifications.granted, contacts: contactsPermission.granted, bluetooth: true });
-      if (contactsPermission.granted) {
-        const result = await Contacts.getContactsAsync({ fields: [Contacts.Fields.Name, Contacts.Fields.PhoneNumbers] });
-        setContacts(result.data.slice(0, 8));
-      }
-    })();
-    return () => { ble.stopDeviceScan(); if (scanTimerRef.current) clearTimeout(scanTimerRef.current); audioSessionRef.current?.close(); ble.destroy(); };
+    (async () => { const mic = await Audio.requestPermissionsAsync(); const notifications = await Notifications.requestPermissionsAsync(); const cp = await Contacts.requestPermissionsAsync(); setPermissionState({ mic: mic.granted, notifications: notifications.granted, contacts: cp.granted }); if (cp.granted) { const result = await Contacts.getContactsAsync({ fields: [Contacts.Fields.Name, Contacts.Fields.PhoneNumbers] }); setContacts(result.data.slice(0, 30)); } checkForUpdate(); })();
+    const listener = ble.onStateChange((state) => setBluetoothState(state), true);
+    return () => { listener.remove(); ble.stopDeviceScan(); if (scanTimer.current) clearTimeout(scanTimer.current); audioSession.current?.close(); ble.destroy(); };
   }, []);
 
-  useEffect(() => {
-    const idle = Animated.loop(Animated.sequence([
-      Animated.timing(idleGlow, { toValue: 1, duration: 1900, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
-      Animated.timing(idleGlow, { toValue: 0.96, duration: 1900, easing: Easing.inOut(Easing.ease), useNativeDriver: true })
-    ]));
-    idle.start();
-    return () => idle.stop();
-  }, [idleGlow]);
+  const checkForUpdate = async () => { try { const response = await fetch('https://api.github.com/repos/tamersariii/qtalk/releases/latest'); const release = await response.json(); const version = String(release.tag_name || '').replace(/^v/, ''); if (version && version !== APP_VERSION && release.assets?.length) setUpdate({ version, url: release.assets.find((x) => x.name.endsWith('.apk'))?.browser_download_url || APK_URL, notes: release.body || 'Yeni özellikler ve iyileştirmeler.' }); } catch {} };
+  const installUpdate = async () => { if (!update) return; try { const target = `${FileSystem.cacheDirectory}qtalk-${update.version}.apk`; const result = await FileSystem.downloadAsync(update.url, target); const contentUri = await FileSystem.getContentUriAsync(result.uri); await IntentLauncher.startActivityAsync('android.intent.action.VIEW', { data: contentUri, type: 'application/vnd.android.package-archive', flags: 1 }); } catch { Alert.alert('Güncelleme başlatılamadı', 'Android güvenlik ayarlarında bu uygulama için bilinmeyen kaynaklardan kuruluma izin verin.'); } };
+  const openBluetoothSettings = async () => { try { await IntentLauncher.startActivityAsync('android.settings.BLUETOOTH_SETTINGS'); } catch { Alert.alert('Bluetooth gerekli', 'Telefon ayarlarından Bluetooth’u açın.'); } };
+  const ensureBluetooth = async () => { const state = await ble.state(); if (state !== 'PoweredOn') { setBluetoothState(state); Alert.alert('Bluetooth kapalı', 'Yakındaki cihazları taramak için Bluetooth’u açın.', [{ text: 'İptal', style: 'cancel' }, { text: 'Bluetooth’u aç', onPress: openBluetoothSettings }]); return false; } return true; };
+  const startScan = async () => { if (scanning) { ble.stopDeviceScan(); setScanning(false); setBluetoothMessage('Tarama durduruldu'); return; } if (!(await ensureBluetooth())) return; setPage('bluetooth'); setDevices([]); setScanning(true); setBluetoothMessage('Cihaz kimlikleri ve sinyal güçleri okunuyor'); ble.startDeviceScan(null, { allowDuplicates: false }, (error, device) => { if (error) { setScanning(false); setBluetoothMessage('Bluetooth taraması durdu'); return; } if (device?.id) setDevices((items) => { const next = { id: device.id, name: device.name || device.localName || 'İsimsiz QTalK cihazı', rssi: device.rssi ?? -100 }; const i = items.findIndex((x) => x.id === device.id); if (i < 0) return [...items, next]; const copy = [...items]; copy[i] = { ...copy[i], ...next }; return copy; }); }); scanTimer.current = setTimeout(() => { ble.stopDeviceScan(); setScanning(false); setBluetoothMessage('Bağlanmak için bir cihaz seçin'); }, 9000); };
+  const connectDevice = async (device) => { setPairingId(device.id); ble.stopDeviceScan(); setScanning(false); setBluetoothMessage(`${device.name} cihazına bağlantı isteği gönderiliyor`); try { const d = await ble.connectToDevice(device.id, { timeout: 10000 }); await d.discoverAllServicesAndCharacteristics(); setConnected({ ...device, name: d.name || device.name }); setPairingId(null); setBluetoothMessage(`${d.name || device.name} ile güvenli kanal hazır`); } catch { setPairingId(null); setBluetoothMessage('Bağlantı kurulamadı veya istek reddedildi'); } };
+  const disconnectDevice = async () => { if (connected) { try { await ble.cancelDeviceConnection(connected.id); } catch {} setConnected(null); setBluetoothMessage('Bağlantı kesildi'); } };
+  const startBluetoothChat = (device) => { const chat = { id: `bt-${device.id}`, name: device.name, subtitle: 'Bluetooth sohbeti', messages: [] }; setChats((items) => items.some((x) => x.id === chat.id) ? items : [chat, ...items]); setSelectedChat(chat); setPage('chat'); };
+  const openChat = (chat) => { setSelectedChat(chat); setPage('chat'); };
+  const invite = async (name = 'QTalK kullanıcısı') => { await Share.share({ message: `QTalK ile güvenli bas-konuş iletişimine katıl: ${APK_URL}\n\n${name} için davet bağlantısı.` }); };
+  const addChat = (person) => { const chat = { id: person.id || person.name, name: person.name || 'QTalK kullanıcısı', subtitle: 'Yeni sohbet', messages: [] }; setChats((items) => items.some((x) => x.id === chat.id) ? items : [chat, ...items]); openChat(chat); };
+  const sendMessage = () => { if (!chatText.trim() || !selectedChat) return; const message = { text: chatText.trim(), mine: true }; setChats((items) => items.map((chat) => chat.id === selectedChat.id ? { ...chat, messages: [...chat.messages, message] } : chat)); setSelectedChat((chat) => ({ ...chat, messages: [...(chat.messages || []), message] })); setChatText(''); };
+  const beginTalk = async () => { if (!permissionState.mic) return Alert.alert('Mikrofon izni gerekli', 'Bas-konuş için mikrofon erişimini açın.'); if (!selectedChat) return Alert.alert('Sohbet seçin', 'Sesli konuşmak için önce Kişiler veya Sohbetler sayfasından bir sohbet açın.'); try { if (!audioSession.current) audioSession.current = createPushToTalkSession({ apiUrl: API_URL, channelId: `chat-${selectedChat.id}`, userId: userId.current, name: 'QTalK kullanıcısı', onStatus: () => {} }); await audioSession.current.beginTalk(); setTalking(true); await Notifications.scheduleNotificationAsync({ content: { title: 'Bas-konuş aktif', body: `${selectedChat.name} ile WebRTC ses bağlantısı açık.` }, trigger: null }); } catch { Alert.alert('Ses bağlantısı kurulamadı', 'Mikrofon veya internet bağlantınızı kontrol edin.'); } };
+  const endTalk = () => { audioSession.current?.endTalk(); setTalking(false); };
 
-  useEffect(() => {
-    if (!talking) {
-      ringOne.stopAnimation(); ringTwo.stopAnimation();
-      ringOne.setValue(0.86); ringTwo.setValue(0.72);
-      return undefined;
-    }
-    const pulse = (value, duration, delay = 0) => Animated.loop(Animated.sequence([
-      Animated.delay(delay),
-      Animated.timing(value, { toValue: 1.22, duration, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
-      Animated.timing(value, { toValue: 0.86, duration: 900, easing: Easing.inOut(Easing.ease), useNativeDriver: true })
-    ]));
-    const first = pulse(ringOne, 1300);
-    const second = pulse(ringTwo, 1500, 260);
-    first.start(); second.start();
-    return () => { first.stop(); second.stop(); };
-  }, [talking, ringOne, ringTwo]);
-
-  const current = useMemo(() => channels.find((item) => item.id === active) || channels[0], [active]);
-
-  const startScan = () => {
-    if (scanning) return;
-    setActive('nearby'); setScanning(true); setStatus('Yakın cihazlar taranıyor…'); setBluetoothMessage('Cihaz kimlikleri ve sinyal güçleri okunuyor'); setNearby([]);
-    ble.stopDeviceScan();
-    scanRef.current = ble.startDeviceScan(null, { allowDuplicates: false }, (error, device) => {
-      if (error) { setScanning(false); setStatus('Bluetooth taraması durdu'); setBluetoothMessage('Bluetooth iznini ve cihaz ayarlarını kontrol edin'); return; }
-      if (device?.id) setNearby((items) => {
-        const next = { id: device.id, name: device.name || device.localName || 'İsimsiz QTalK cihazı', rssi: device.rssi ?? -100, serviceUUIDs: device.serviceUUIDs || [], manufacturerData: device.manufacturerData };
-        const existing = items.findIndex((item) => item.id === device.id);
-        if (existing === -1) return [...items, next];
-        const copy = [...items]; copy[existing] = { ...copy[existing], ...next }; return copy;
-      });
-    });
-    scanTimerRef.current = setTimeout(() => { ble.stopDeviceScan(); setScanning(false); setStatus('Tarama tamamlandı'); setBluetoothMessage('Bağlanmak için bir cihaz seçin'); }, 9000);
-  };
-
-  const stopScan = () => {
-    ble.stopDeviceScan();
-    if (scanTimerRef.current) clearTimeout(scanTimerRef.current);
-    setScanning(false); setStatus('Tarama durduruldu'); setBluetoothMessage('Yeni cihaz aramak için taramayı başlatın');
-  };
-
-  const connectNearby = async (device) => {
-    if (pairingId) return;
-    stopScan(); setPairingId(device.id); setBluetoothMessage(`${device.name} cihazına bağlantı isteği gönderiliyor`);
-    try {
-      const connected = await ble.connectToDevice(device.id, { timeout: 10000, autoConnect: false });
-      await connected.discoverAllServicesAndCharacteristics();
-      setConnectedDevice({ ...device, id: connected.id, name: connected.name || device.name });
-      setPairingId(null); setStatus('Bluetooth bağlantısı hazır'); setBluetoothMessage(`${connected.name || device.name} ile güvenli kanal hazır`);
-    } catch (error) {
-      setPairingId(null); setStatus('Bağlantı kurulamadı'); setBluetoothMessage('Cihaz erişilebilir değil veya bağlantı isteğini reddetti');
-    }
-  };
-
-  const disconnectNearby = async () => {
-    if (!connectedDevice) return;
-    try { await ble.cancelDeviceConnection(connectedDevice.id); } catch {}
-    setConnectedDevice(null); setStatus('Hazır'); setBluetoothMessage('Bağlantı kesildi');
-  };
-
-  const signalLabel = (rssi) => rssi >= -60 ? 'Çok güçlü' : rssi >= -75 ? 'Güçlü' : rssi >= -90 ? 'Orta' : 'Zayıf';
-  const signalColor = (rssi) => rssi >= -60 ? '#36D6C5' : rssi >= -75 ? '#BDEB72' : rssi >= -90 ? '#FFA76B' : '#FF7C91';
-
-  const beginTalk = async () => {
-    if (!permissionState.mic) return Alert.alert('Mikrofon izni gerekli', 'Bas-konuş için mikrofon erişimini Ayarlar’dan etkinleştirin.');
-    try {
-      if (!audioSessionRef.current) audioSessionRef.current = createPushToTalkSession({ apiUrl: 'https://qtalk-api.1onplayer.workers.dev', channelId: current.id, userId: userIdRef.current, name: 'QTalK kullanıcısı', onStatus: setWebrtcStatus });
-      await audioSessionRef.current.beginTalk();
-      setTalking(true);
-      setStatus(`${current.title} kanalında konuşuyorsunuz`);
-      Animated.spring(buttonScale, { toValue: 0.94, friction: 7, tension: 80, useNativeDriver: true }).start();
-      await Notifications.scheduleNotificationAsync({ content: { title: 'Bas-konuş aktif', body: `${current.title} kanalına WebRTC sesi gönderiliyor.` }, trigger: null });
-    } catch (error) {
-      setWebrtcStatus('Ses bağlantısı kurulamadı');
-      Alert.alert('Ses bağlantısı kurulamadı', 'Mikrofon veya internet bağlantınızı kontrol edip tekrar deneyin.');
-    }
-  };
-  const endTalk = () => {
-    audioSessionRef.current?.endTalk();
-    setTalking(false); setStatus('Hazır');
-    Animated.spring(buttonScale, { toValue: 1, friction: 5, tension: 80, useNativeDriver: true }).start();
-  };
-
-  return <SafeAreaView style={styles.safe}>
-    <StatusBar barStyle="light-content" />
-    <View style={styles.header}>
-      <View><View style={styles.brandRow}><View style={styles.brandMark}><Ionicons name="radio" size={13} color="#07111F" /></View><Text style={styles.eyebrow}>QTALK / GÜVENLİ İLETİŞİM</Text></View><Text style={styles.title}>Konuşmaya hazır.</Text></View>
-      <Pressable style={styles.avatar} onPress={() => Alert.alert('Profil', 'Tamer Sarı')}><Text style={styles.avatarText}>TS</Text><View style={styles.onlineBadge} /></Pressable>
-    </View>
-    <View style={styles.statusRow}><View style={[styles.dot, { backgroundColor: current.color }]} /><Text style={styles.statusText}>{status}</Text><View style={styles.securePill}><Ionicons name="shield-checkmark" size={11} color="#36D6C5" /><Text style={styles.encryption}>GÜVENLİ</Text></View></View>
-    <Text style={styles.sectionLabel}>KANALLAR</Text>
-    <FlatList data={channels} keyExtractor={(item) => item.id} horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.channelList} renderItem={({ item }) => <Pressable onPress={() => item.id === 'nearby' ? startScan() : setActive(item.id)} style={[styles.channelCard, active === item.id && { borderColor: item.color, backgroundColor: `${item.color}12` }]}><View style={styles.cardTop}><View style={[styles.channelIcon, { backgroundColor: `${item.color}20` }]}><Ionicons name={item.id === 'nearby' ? 'bluetooth' : 'radio'} size={19} color={item.color} /></View>{item.online && <View style={styles.liveDot} />}</View><Text style={styles.channelTitle}>{item.title}</Text><Text style={styles.channelSubtitle}>{item.subtitle}</Text></Pressable>} />
-    <View style={styles.talkPanel}><View style={styles.talkPanelHeader}><View><Text style={styles.talkLabel}>AKTİF KANAL</Text><Text style={styles.talkChannel}>{current.title}</Text></View><View style={styles.channelSignal}><View style={[styles.signalBar, { height: 8 }]} /><View style={[styles.signalBar, { height: 13 }]} /><View style={[styles.signalBar, { height: 18 }]} /><Text style={styles.signalText}>GÜÇLÜ</Text></View></View>
-      <View style={styles.buttonStage}><PulseRing size={205} color={talking ? '#FFA76B' : '#36D6C5'} scale={ringTwo} opacity={talking ? 0.13 : 0.06} /><PulseRing size={184} color={talking ? '#FFA76B' : '#36D6C5'} scale={ringOne} opacity={talking ? 0.25 : 0.1} /><Animated.View style={[styles.talkButtonHalo, { transform: [{ scale: idleGlow }], backgroundColor: talking ? '#FFA76B18' : '#36D6C518' }]} /><Animated.View style={[styles.talkButton, talking && styles.talkButtonActive, { transform: [{ scale: buttonScale }] }]}><Pressable onPressIn={beginTalk} onPressOut={endTalk} style={styles.talkButtonTouch}><Ionicons name={talking ? 'radio' : 'mic'} size={38} color="#07111F" /><Text style={styles.talkButtonText}>{talking ? 'KONUŞUYOR' : 'BASILI TUT'}</Text><WaveBars active={talking} /></Pressable></Animated.View></View>
-      <Text style={styles.hint}>{talking ? 'Sesiniz WebRTC ile kanala iletiliyor' : 'Konuşmak için düğmeye basılı tutun'}</Text><View style={styles.audioStatus}><View style={[styles.audioStatusDot, { backgroundColor: webrtcStatus === 'talking' ? '#FFA76B' : webrtcStatus === 'connected' ? '#36D6C5' : '#52647D' }]} /><Text style={styles.audioStatusText}>{webrtcStatus}</Text></View>
-    </View>
-    {active === 'nearby' && <View style={styles.bluetoothPanel}>
-      <View style={styles.panelHeader}><View><Text style={styles.panelTitle}>Yakındaki cihazlar</Text><Text style={styles.panelCaption}>Bluetooth keşif ve eşleşme alanı</Text></View><Pressable style={[styles.scanButton, scanning && styles.scanButtonActive]} onPress={scanning ? stopScan : startScan}><Ionicons name={scanning ? 'stop' : 'scan'} size={15} color={scanning ? '#FFA76B' : '#07111F'} /><Text style={[styles.scanButtonText, scanning && styles.scanButtonTextActive]}>{scanning ? 'DURDUR' : 'TARAMA BAŞLAT'}</Text></Pressable></View>
-      <View style={styles.bluetoothSummary}><View style={[styles.bluetoothOrb, scanning && styles.bluetoothOrbActive]}><Ionicons name="bluetooth" size={27} color={scanning ? '#FFA76B' : '#8796FF'} /></View><View style={styles.bluetoothSummaryText}><Text style={styles.bluetoothMessage}>{bluetoothMessage}</Text><Text style={styles.bluetoothMeta}>{nearby.length} cihaz bulundu · {scanning ? 'tarama aktif' : 'tarama hazır'}</Text></View><View style={styles.scanPulse}><View style={[styles.scanPulseDot, { backgroundColor: scanning ? '#FFA76B' : '#36D6C5' }]} /><Text style={styles.scanPulseText}>{scanning ? 'CANLI' : 'HAZIR'}</Text></View></View>
-      {connectedDevice && <View style={styles.connectedCard}><View style={styles.connectedIcon}><Ionicons name="link" size={17} color="#07111F" /></View><View style={styles.deviceNameBlock}><Text style={styles.connectedLabel}>BAĞLI CİHAZ</Text><Text style={styles.deviceName}>{connectedDevice.name}</Text><Text style={styles.deviceId}>{connectedDevice.id}</Text></View><Pressable onPress={disconnectNearby} style={styles.disconnectButton}><Text style={styles.disconnectText}>KES</Text></Pressable></View>}
-      {nearby.length === 0 ? <View style={styles.emptyBluetooth}><Ionicons name="radio-outline" size={24} color="#52647D" /><Text style={styles.muted}>{scanning ? 'QTalK cihazları aranıyor…' : 'Tarama başlatarak yakındaki cihazları görün'}</Text><Text style={styles.emptyHint}>Cihazınızın Bluetooth’u açık ve görünür olmalı</Text></View> : <View style={styles.deviceList}>{[...nearby].sort((a, b) => b.rssi - a.rssi).map((device) => <View key={device.id} style={styles.nearbyDeviceCard}><View style={[styles.nearbyDeviceIcon, { backgroundColor: `${signalColor(device.rssi)}20` }]}><Ionicons name="bluetooth" size={19} color={signalColor(device.rssi)} /></View><View style={styles.deviceNameBlock}><Text style={styles.deviceName}>{device.name}</Text><Text style={styles.deviceId}>{device.id}</Text><View style={styles.rssiRow}><View style={styles.rssiBars}><View style={[styles.rssiBar, { height: 5, backgroundColor: signalColor(device.rssi) }]} /><View style={[styles.rssiBar, { height: 9, backgroundColor: device.rssi >= -90 ? signalColor(device.rssi) : '#263A53' }]} /><View style={[styles.rssiBar, { height: 13, backgroundColor: device.rssi >= -75 ? signalColor(device.rssi) : '#263A53' }]} /><View style={[styles.rssiBar, { height: 17, backgroundColor: device.rssi >= -60 ? signalColor(device.rssi) : '#263A53' }]} /></View><Text style={[styles.rssiText, { color: signalColor(device.rssi) }]}>{device.rssi} dBm · {signalLabel(device.rssi)}</Text></View></View><Pressable disabled={pairingId === device.id || Boolean(connectedDevice)} onPress={() => connectNearby(device)} style={[styles.connectButton, pairingId === device.id && styles.connectButtonBusy, connectedDevice && styles.connectButtonDisabled]}><Ionicons name={pairingId === device.id ? 'sync' : 'link-outline'} size={14} color={pairingId === device.id ? '#07111F' : '#36D6C5'} /><Text style={styles.connectText}>{pairingId === device.id ? 'İSTEK…' : 'BAĞLAN'}</Text></Pressable></View>)}</View>}
-    </View>}
-    <View style={styles.panel}><View style={styles.panelHeader}><View><Text style={styles.panelTitle}>Kişiler</Text><Text style={styles.panelCaption}>Hızlı erişim</Text></View><Text style={styles.muted}>{contacts.length} kayıt</Text></View>{contacts.slice(0, 3).map((contact, index) => <View key={contact.id || index} style={styles.deviceRow}><View style={styles.contactBubble}><Text style={styles.contactInitial}>{(contact.name || '?')[0]}</Text></View><Text style={styles.deviceName}>{contact.name || 'İsimsiz kişi'}</Text><Ionicons name="chevron-forward" size={18} color="#62738D" /></View>)}{!permissionState.contacts && <Text style={styles.muted}>Kişi listesi izni verilmedi.</Text>}</View>
-    <View style={styles.permissions}><View style={styles.permissionDot} /><Text style={styles.permissionText}>Mikrofon {permissionState.mic ? 'aktif' : 'bekliyor'} · Bildirimler {permissionState.notifications ? 'aktif' : 'bekliyor'} · Bluetooth hazır</Text></View>
+  return <SafeAreaView style={styles.safe}><StatusBar barStyle="light-content" /><View style={styles.topbar}><Pressable onPress={() => setDrawer(true)} style={styles.menuButton}><Ionicons name="menu" size={25} color="#F6F8FC" /></Pressable><View><Text style={styles.brand}>QTALK</Text><Text style={styles.topSubtitle}>{page === 'bluetooth' ? 'YAKIN ALAN' : page === 'contacts' ? 'KİŞİLER' : page === 'chat' ? 'SOHBET' : 'GÜVENLİ İLETİŞİM'}</Text></View><View style={styles.topStatus}><View style={styles.statusDot} /><Text style={styles.statusSmall}>ÇEVRİMİÇİ</Text></View></View>
+    {update && <View style={styles.updateBanner}><View style={styles.updateIcon}><Ionicons name="arrow-down-circle" size={19} color="#07111F" /></View><View style={styles.flex}><Text style={styles.updateTitle}>QTalK {update.version} hazır</Text><Text style={styles.updateText}>Yeni sürüm uygulama içinden indirilebilir.</Text></View><Pressable onPress={installUpdate} style={styles.updateButton}><Text style={styles.updateButtonText}>GÜNCELLE</Text></Pressable></View>}
+    {page === 'bluetooth' && <BluetoothPage devices={devices} scanning={scanning} message={bluetoothMessage} connected={connected} pairingId={pairingId} onScan={startScan} onConnect={connectDevice} onDisconnect={disconnectDevice} onStartChat={startBluetoothChat} onCheck={openBluetoothSettings} />}
+    {page === 'contacts' && (
+      <View style={styles.page}>
+        <View style={styles.pageHeader}><View><Text style={styles.pageEyebrow}>ADRES DEFTERİ</Text><Text style={styles.pageTitle}>Kişiler</Text></View><Pressable onPress={() => invite()} style={styles.inviteButton}><Ionicons name="share-social" size={15} color="#07111F" /><Text style={styles.inviteText}>DAVET ET</Text></Pressable></View>
+        <View style={styles.inviteCard}><Ionicons name="person-add" size={24} color="#36D6C5" /><View style={styles.flex}><Text style={styles.cardTitle}>QTalK kullanmayanları davet edin</Text><Text style={styles.panelCaption}>İndirme bağlantısını doğrudan paylaşın.</Text></View><Pressable onPress={() => invite()}><Ionicons name="send" size={18} color="#36D6C5" /></Pressable></View>
+        <View style={styles.listPanel}>{contacts.length === 0 ? <View style={styles.empty}><Ionicons name="people-outline" size={28} color="#52647D" /><Text style={styles.muted}>Kişi listesi izni verilmedi.</Text></View> : <FlatList data={contacts} keyExtractor={(item, i) => item.id || String(i)} renderItem={({ item }) => <Pressable style={styles.contactRow} onPress={() => addChat(item)}><View style={styles.contactAvatar}><Text style={styles.contactInitial}>{(item.name || '?')[0]}</Text></View><View style={styles.flex}><Text style={styles.cardTitle}>{item.name || 'İsimsiz kişi'}</Text><Text style={styles.panelCaption}>Sohbet başlat</Text></View><Ionicons name="chatbubble-ellipses-outline" size={19} color="#36D6C5" /></Pressable>} />}</View>
+      </View>
+    )}
+    {page === 'chats' && (
+      <View style={styles.page}>
+        <View style={styles.pageHeader}><View><Text style={styles.pageEyebrow}>QTALK</Text><Text style={styles.pageTitle}>Sohbetler</Text></View><Pressable onPress={() => setPage('contacts')} style={styles.roundButton}><Ionicons name="person-add" size={18} color="#36D6C5" /></Pressable></View>
+        {chats.length === 0 ? <View style={styles.emptyHero}><View style={styles.emptyHeroIcon}><Ionicons name="radio" size={32} color="#36D6C5" /></View><Text style={styles.heroTitle}>Henüz sohbet yok</Text><Text style={styles.heroText}>Kişilerden birini seçin veya Bluetooth cihazıyla eşleşerek ayrı bir sohbet başlatın.</Text><Pressable onPress={() => setPage('contacts')} style={styles.primaryButton}><Ionicons name="people" size={16} color="#07111F" /><Text style={styles.primaryButtonText}>KİŞİLERİ GÖR</Text></Pressable></View> : chats.map((chat) => <Pressable key={chat.id} style={styles.chatRow} onPress={() => openChat(chat)}><View style={styles.contactAvatar}><Text style={styles.contactInitial}>{chat.name[0]}</Text></View><View style={styles.flex}><Text style={styles.cardTitle}>{chat.name}</Text><Text style={styles.panelCaption}>{chat.messages[chat.messages.length - 1]?.text || chat.subtitle}</Text></View><Ionicons name="chevron-forward" size={18} color="#62738D" /></Pressable>)}
+      </View>
+    )}
+    {page === 'chat' && selectedChat && (
+      <View style={styles.page}>
+        <View style={styles.chatHeader}><Pressable onPress={() => setPage('chats')}><Ionicons name="chevron-back" size={25} color="#F6F8FC" /></Pressable><View style={styles.contactAvatarSmall}><Text style={styles.contactInitial}>{selectedChat.name[0]}</Text></View><View style={styles.flex}><Text style={styles.cardTitle}>{selectedChat.name}</Text><Text style={styles.panelCaption}>Güvenli WebRTC sohbeti</Text></View><Ionicons name="shield-checkmark" size={18} color="#36D6C5" /></View>
+        <FlatList style={styles.messageList} data={selectedChat.messages || []} keyExtractor={(_, i) => String(i)} renderItem={({ item }) => <View style={[styles.messageBubble, item.mine && styles.messageMine]}><Text style={[styles.messageText, item.mine && styles.messageMineText]}>{item.text}</Text></View>} ListEmptyComponent={<View style={styles.empty}><Text style={styles.muted}>Sohbet başladı. Bas-konuş düğmesini kullanabilirsiniz.</Text></View>} />
+        <View style={styles.chatComposer}><TextInput value={chatText} onChangeText={setChatText} placeholder="Mesaj yazın…" placeholderTextColor="#62738D" style={styles.input} /><Pressable onPress={sendMessage} style={styles.sendButton}><Ionicons name="send" size={17} color="#07111F" /></Pressable></View>
+        <View style={styles.pttDock}><Text style={styles.pttLabel}>{talking ? 'WEBRTC SESİ AKTİF' : 'BAS-KONUŞ'}</Text><Pressable onPressIn={beginTalk} onPressOut={endTalk} style={[styles.pttButton, talking && styles.pttButtonActive]}><Ionicons name={talking ? 'radio' : 'mic'} size={26} color="#07111F" /><WaveBars active={talking} /></Pressable><Text style={styles.pttHint}>{talking ? 'Konuşuyorsunuz, bırakınca ses kesilir' : 'Ses göndermek için basılı tutun'}</Text></View>
+      </View>
+    )}
+    <View style={styles.bottomBar}><Tab icon="bluetooth" label="Bluetooth" active={page === 'bluetooth'} onPress={() => setPage('bluetooth')} /><Tab icon="people" label="Kişiler" active={page === 'contacts'} onPress={() => setPage('contacts')} /><Tab icon="chatbubbles" label="Sohbet" active={page === 'chats' || page === 'chat'} onPress={() => setPage('chats')} /></View>
+    <Modal visible={drawer} transparent animationType="none" onRequestClose={() => setDrawer(false)}><Pressable style={styles.drawerOverlay} onPress={() => setDrawer(false)}><View style={styles.drawer}><View style={styles.drawerBrand}><View style={styles.brandMark}><Ionicons name="radio" size={13} color="#07111F" /></View><Text style={styles.brand}>QTALK</Text></View><Text style={styles.drawerVersion}>Sürüm {APP_VERSION}</Text><View style={styles.drawerLine} /><DrawerItem icon="logo-github" label="GitHub reposu" onPress={() => Share.share({ message: REPO_URL })} /><DrawerItem icon="document-text" label="Gizlilik politikası" onPress={() => Share.share({ message: PRIVACY_URL })} /><DrawerItem icon="download" label="Güncellemeleri kontrol et" onPress={() => { setDrawer(false); checkForUpdate(); Alert.alert('Güncelleme kontrolü', 'QTalK güncel sürüm kontrolü tamamlandı.'); }} /><DrawerItem icon="share-social" label="QTalK’ı davet et" onPress={() => invite()} /></View></Pressable></Modal>
   </SafeAreaView>;
 }
 
+function Tab({ icon, label, active, onPress }) { return <Pressable onPress={onPress} style={styles.tab}><Ionicons name={icon} size={20} color={active ? '#36D6C5' : '#62738D'} /><Text style={[styles.tabLabel, active && styles.tabLabelActive]}>{label}</Text></Pressable>; }
+function DrawerItem({ icon, label, onPress }) { return <Pressable style={styles.drawerItem} onPress={onPress}><Ionicons name={icon} size={19} color="#8DF5E7" /><Text style={styles.drawerLabel}>{label}</Text><Ionicons name="chevron-forward" size={16} color="#52647D" /></Pressable>; }
+
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#07111F', paddingHorizontal: 20 }, header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingTop: 18, paddingBottom: 15 }, brandRow: { flexDirection: 'row', alignItems: 'center', gap: 7 }, brandMark: { width: 19, height: 19, borderRadius: 6, backgroundColor: '#36D6C5', alignItems: 'center', justifyContent: 'center' }, eyebrow: { color: '#36D6C5', fontSize: 9, letterSpacing: 1.8, fontWeight: '800' }, title: { color: '#F6F8FC', fontSize: 29, fontWeight: '800', marginTop: 7, letterSpacing: -0.7 }, avatar: { width: 44, height: 44, borderRadius: 15, backgroundColor: '#172943', justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: '#27415F' }, avatarText: { color: '#8DF5E7', fontWeight: '800', fontSize: 13 }, onlineBadge: { position: 'absolute', right: -2, bottom: -1, width: 11, height: 11, borderRadius: 6, backgroundColor: '#36D6C5', borderWidth: 2, borderColor: '#07111F' }, statusRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 15 }, dot: { width: 8, height: 8, borderRadius: 8, marginRight: 8 }, statusText: { color: '#B6C2D3', fontSize: 12, flex: 1 }, securePill: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 5, borderRadius: 8, backgroundColor: '#102B35' }, encryption: { color: '#36D6C5', fontSize: 8, letterSpacing: 1, fontWeight: '800' }, sectionLabel: { color: '#52647D', fontSize: 9, letterSpacing: 1.8, fontWeight: '800', marginBottom: 9 }, channelList: { gap: 10, paddingBottom: 16 }, channelCard: { width: 145, minHeight: 118, borderRadius: 19, padding: 14, backgroundColor: '#0D1B2E', borderWidth: 1, borderColor: '#172943' }, cardTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }, channelIcon: { width: 38, height: 38, borderRadius: 12, justifyContent: 'center', alignItems: 'center', marginBottom: 12 }, liveDot: { width: 6, height: 6, borderRadius: 4, backgroundColor: '#36D6C5', marginTop: 5 }, channelTitle: { color: '#F6F8FC', fontWeight: '700', fontSize: 14 }, channelSubtitle: { color: '#7689A4', fontSize: 11, marginTop: 5 }, talkPanel: { alignItems: 'center', backgroundColor: '#0D1B2E', borderRadius: 28, paddingHorizontal: 18, paddingTop: 19, paddingBottom: 20, borderWidth: 1, borderColor: '#172943', overflow: 'hidden' }, talkPanelHeader: { width: '100%', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }, talkLabel: { color: '#62738D', fontSize: 9, letterSpacing: 1.8, fontWeight: '800' }, talkChannel: { color: '#F6F8FC', fontSize: 19, fontWeight: '800', marginTop: 6 }, channelSignal: { alignItems: 'flex-end', flexDirection: 'row', gap: 3 }, signalBar: { width: 4, borderRadius: 3, backgroundColor: '#36D6C5' }, signalText: { color: '#36D6C5', fontSize: 8, letterSpacing: 1, fontWeight: '800', marginLeft: 5 }, buttonStage: { width: 230, height: 215, alignItems: 'center', justifyContent: 'center', marginVertical: 4 }, pulseRing: { position: 'absolute', borderWidth: 1.5 }, talkButtonHalo: { position: 'absolute', width: 182, height: 182, borderRadius: 91 }, talkButton: { width: 154, height: 154, borderRadius: 77, backgroundColor: '#36D6C5', justifyContent: 'center', alignItems: 'center', shadowColor: '#36D6C5', shadowOpacity: 0.3, shadowRadius: 24, elevation: 12 }, talkButtonActive: { backgroundColor: '#FFA76B', shadowColor: '#FFA76B', shadowOpacity: 0.38 }, talkButtonTouch: { flex: 1, width: '100%', alignItems: 'center', justifyContent: 'center', borderRadius: 77 }, talkButtonText: { color: '#07111F', fontSize: 10, fontWeight: '900', letterSpacing: 1.35, marginTop: 7 }, wave: { height: 18, flexDirection: 'row', alignItems: 'center', gap: 3, marginTop: 9 }, waveBar: { width: 3, height: 16, borderRadius: 3 }, hint: { color: '#7689A4', fontSize: 11 }, audioStatus: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 8 }, audioStatusDot: { width: 5, height: 5, borderRadius: 3 }, audioStatusText: { color: '#52647D', fontSize: 9 }, panel: { marginTop: 12, padding: 15, backgroundColor: '#0D1B2E', borderRadius: 19, borderWidth: 1, borderColor: '#172943' }, bluetoothPanel: { marginTop: 12, padding: 15, backgroundColor: '#0D1B2E', borderRadius: 21, borderWidth: 1, borderColor: '#243B59' }, panelHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 9 }, panelTitle: { color: '#F6F8FC', fontSize: 15, fontWeight: '750' }, panelCaption: { color: '#62738D', fontSize: 10, marginTop: 3 }, refreshButton: { flexDirection: 'row', alignItems: 'center', gap: 5 }, scanButton: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 9, paddingVertical: 8, borderRadius: 10, backgroundColor: '#36D6C5' }, scanButtonActive: { backgroundColor: '#FFA76B' }, scanButtonText: { color: '#07111F', fontSize: 8, fontWeight: '900', letterSpacing: 0.7 }, scanButtonTextActive: { color: '#07111F' }, bluetoothSummary: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, paddingHorizontal: 11, borderRadius: 15, backgroundColor: '#101F34', marginBottom: 11 }, bluetoothOrb: { width: 49, height: 49, borderRadius: 17, backgroundColor: '#202E5B', alignItems: 'center', justifyContent: 'center' }, bluetoothOrbActive: { backgroundColor: '#4B302C' }, bluetoothSummaryText: { flex: 1, marginLeft: 11 }, bluetoothMessage: { color: '#D9E2EF', fontSize: 12, fontWeight: '700' }, bluetoothMeta: { color: '#62738D', fontSize: 10, marginTop: 4 }, scanPulse: { alignItems: 'center', marginLeft: 7 }, scanPulseDot: { width: 7, height: 7, borderRadius: 4, marginBottom: 4 }, scanPulseText: { color: '#7689A4', fontSize: 8, fontWeight: '900', letterSpacing: 0.8 }, connectedCard: { flexDirection: 'row', alignItems: 'center', padding: 10, borderRadius: 14, backgroundColor: '#163436', borderWidth: 1, borderColor: '#2C6E66', marginBottom: 11 }, connectedIcon: { width: 32, height: 32, borderRadius: 10, backgroundColor: '#36D6C5', alignItems: 'center', justifyContent: 'center' }, connectedLabel: { color: '#36D6C5', fontSize: 8, fontWeight: '900', letterSpacing: 1 }, disconnectButton: { paddingHorizontal: 9, paddingVertical: 7, borderRadius: 8, backgroundColor: '#27494A' }, disconnectText: { color: '#8DF5E7', fontSize: 9, fontWeight: '900' }, deviceList: { gap: 8 }, nearbyDeviceCard: { flexDirection: 'row', alignItems: 'center', padding: 10, borderRadius: 14, backgroundColor: '#101F34', borderWidth: 1, borderColor: '#1A304A' }, nearbyDeviceIcon: { width: 38, height: 38, borderRadius: 12, alignItems: 'center', justifyContent: 'center', marginRight: 9 }, deviceNameBlock: { flex: 1 }, deviceId: { color: '#52647D', fontSize: 9, marginTop: 3 }, rssiRow: { flexDirection: 'row', alignItems: 'center', marginTop: 6 }, rssiBars: { flexDirection: 'row', alignItems: 'flex-end', gap: 2, height: 17, marginRight: 6 }, rssiBar: { width: 3, borderRadius: 2 }, rssiText: { fontSize: 9, fontWeight: '700' }, connectButton: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 8, borderRadius: 9, borderWidth: 1, borderColor: '#245E5A' }, connectButtonBusy: { backgroundColor: '#FFA76B', borderColor: '#FFA76B' }, connectButtonDisabled: { opacity: 0.4 }, connectText: { color: '#36D6C5', fontSize: 8, fontWeight: '900' }, emptyBluetooth: { alignItems: 'center', gap: 7, paddingVertical: 21 }, emptyHint: { color: '#52647D', fontSize: 10 }, muted: { color: '#7689A4', fontSize: 12 }, deviceRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 8, gap: 10 }, deviceName: { color: '#D9E2EF', fontSize: 13, flex: 1 }, contactBubble: { width: 29, height: 29, borderRadius: 10, backgroundColor: '#223956', alignItems: 'center', justifyContent: 'center' }, contactInitial: { color: '#8DF5E7', fontWeight: '700' }, permissions: { paddingVertical: 10, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 6 }, permissionDot: { width: 5, height: 5, borderRadius: 3, backgroundColor: '#36D6C5' }, permissionText: { color: '#52647D', fontSize: 9 }
+  safe: { flex: 1, backgroundColor: '#07111F' }, topbar: { height: 66, paddingHorizontal: 18, flexDirection: 'row', alignItems: 'center', gap: 12, borderBottomWidth: 1, borderBottomColor: '#13253C' }, menuButton: { width: 40, height: 40, borderRadius: 12, backgroundColor: '#0D1B2E', alignItems: 'center', justifyContent: 'center' }, brand: { color: '#F6F8FC', fontSize: 16, fontWeight: '900', letterSpacing: 2 }, topSubtitle: { color: '#62738D', fontSize: 8, letterSpacing: 1.5, marginTop: 3 }, topStatus: { marginLeft: 'auto', flexDirection: 'row', alignItems: 'center', gap: 5 }, statusDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#36D6C5' }, statusSmall: { color: '#36D6C5', fontSize: 8, fontWeight: '900', letterSpacing: 1 }, page: { flex: 1, padding: 18 }, pageHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }, pageEyebrow: { color: '#36D6C5', fontSize: 9, letterSpacing: 1.7, fontWeight: '900' }, pageTitle: { color: '#F6F8FC', fontSize: 29, fontWeight: '900', marginTop: 5 }, bluetoothStatus: { flexDirection: 'row', alignItems: 'center', gap: 6, padding: 8, borderRadius: 9, backgroundColor: '#102B35' }, scanHero: { alignItems: 'center', padding: 16, borderRadius: 24, backgroundColor: '#0D1B2E', borderWidth: 1, borderColor: '#243B59', marginBottom: 12 }, scanGraphic: { width: 142, height: 142, alignItems: 'center', justifyContent: 'center', marginBottom: 9 }, bluetoothCircle: { width: 82, height: 82, borderRadius: 41, backgroundColor: '#202E5B', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#3E538D' }, bluetoothCircleActive: { backgroundColor: '#4B302C', borderColor: '#FFA76B' }, scanOrbit: { position: 'absolute', width: 130, height: 130, borderRadius: 65, borderWidth: 2, borderColor: '#FFA76B', borderLeftColor: 'transparent', borderBottomColor: 'transparent' }, scanTitle: { color: '#F6F8FC', fontSize: 16, fontWeight: '800' }, scanMessage: { color: '#7689A4', fontSize: 11, marginTop: 5, marginBottom: 14 }, primaryButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, paddingHorizontal: 15, paddingVertical: 11, borderRadius: 11, backgroundColor: '#36D6C5' }, stopButton: { backgroundColor: '#FFA76B' }, primaryButtonText: { color: '#07111F', fontSize: 9, fontWeight: '900', letterSpacing: .8 }, secondaryLink: { color: '#8796FF', fontSize: 10, marginTop: 12 }, connectedCard: { flexDirection: 'row', alignItems: 'center', padding: 11, borderRadius: 15, backgroundColor: '#163436', borderWidth: 1, borderColor: '#2C6E66', marginBottom: 12 }, connectedIcon: { width: 34, height: 34, borderRadius: 11, backgroundColor: '#36D6C5', alignItems: 'center', justifyContent: 'center' }, chatLaunch: { width: 29, height: 29, borderRadius: 9, backgroundColor: '#36D6C5', alignItems: 'center', justifyContent: 'center', marginRight: 9 }, listPanel: { flex: 1, padding: 15, borderRadius: 19, backgroundColor: '#0D1B2E', borderWidth: 1, borderColor: '#172943' }, panelHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 11 }, panelTitle: { color: '#F6F8FC', fontSize: 15, fontWeight: '800' }, panelCaption: { color: '#62738D', fontSize: 10, marginTop: 3 }, deviceCard: { flexDirection: 'row', alignItems: 'center', padding: 10, marginBottom: 8, borderRadius: 14, backgroundColor: '#101F34' }, deviceIcon: { width: 39, height: 39, borderRadius: 12, alignItems: 'center', justifyContent: 'center', marginRight: 9 }, flex: { flex: 1 }, cardEyebrow: { color: '#36D6C5', fontSize: 8, fontWeight: '900', letterSpacing: 1 }, cardTitle: { color: '#D9E2EF', fontSize: 13, fontWeight: '700' }, deviceId: { color: '#52647D', fontSize: 8, marginTop: 3 }, rssi: { fontSize: 9, marginTop: 5, fontWeight: '700' }, outlineButton: { borderWidth: 1, borderColor: '#245E5A', paddingHorizontal: 8, paddingVertical: 8, borderRadius: 9 }, pairingButton: { backgroundColor: '#FFA76B', borderColor: '#FFA76B' }, outlineButtonText: { color: '#36D6C5', fontSize: 8, fontWeight: '900' }, empty: { flex: 1, minHeight: 90, alignItems: 'center', justifyContent: 'center', gap: 8 }, muted: { color: '#7689A4', fontSize: 12, textAlign: 'center' }, inviteButton: { flexDirection: 'row', alignItems: 'center', gap: 5, padding: 10, borderRadius: 10, backgroundColor: '#36D6C5' }, inviteText: { color: '#07111F', fontSize: 8, fontWeight: '900' }, inviteCard: { flexDirection: 'row', gap: 11, alignItems: 'center', padding: 14, borderRadius: 16, backgroundColor: '#102B35', marginBottom: 12 }, contactRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 11, gap: 10, borderBottomWidth: 1, borderBottomColor: '#172943' }, contactAvatar: { width: 39, height: 39, borderRadius: 13, backgroundColor: '#223956', alignItems: 'center', justifyContent: 'center' }, contactInitial: { color: '#8DF5E7', fontWeight: '900', fontSize: 15 }, emptyHero: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 28, gap: 12 }, emptyHeroIcon: { width: 75, height: 75, borderRadius: 26, backgroundColor: '#102B35', alignItems: 'center', justifyContent: 'center' }, heroTitle: { color: '#F6F8FC', fontSize: 20, fontWeight: '900' }, heroText: { color: '#7689A4', textAlign: 'center', lineHeight: 19, fontSize: 12, marginBottom: 8 }, chatRow: { flexDirection: 'row', alignItems: 'center', gap: 11, padding: 13, borderRadius: 15, backgroundColor: '#0D1B2E', marginBottom: 8 }, chatHeader: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingBottom: 14, borderBottomWidth: 1, borderBottomColor: '#172943' }, contactAvatarSmall: { width: 35, height: 35, borderRadius: 11, backgroundColor: '#223956', alignItems: 'center', justifyContent: 'center' }, messageList: { flex: 1, paddingTop: 13 }, messageBubble: { alignSelf: 'flex-start', backgroundColor: '#172943', padding: 10, borderRadius: 13, marginBottom: 8, maxWidth: '80%' }, messageMine: { alignSelf: 'flex-end', backgroundColor: '#36D6C5' }, messageText: { color: '#D9E2EF', fontSize: 13 }, messageMineText: { color: '#07111F' }, chatComposer: { flexDirection: 'row', alignItems: 'center', gap: 8, marginVertical: 9 }, input: { flex: 1, height: 42, borderRadius: 12, backgroundColor: '#0D1B2E', color: '#F6F8FC', paddingHorizontal: 13, borderWidth: 1, borderColor: '#172943' }, sendButton: { width: 42, height: 42, borderRadius: 12, backgroundColor: '#36D6C5', alignItems: 'center', justifyContent: 'center' }, pttDock: { alignItems: 'center', padding: 13, borderRadius: 20, backgroundColor: '#0D1B2E', borderWidth: 1, borderColor: '#243B59' }, pttLabel: { color: '#62738D', fontSize: 9, fontWeight: '900', letterSpacing: 1.5 }, pttButton: { width: 75, height: 75, borderRadius: 38, backgroundColor: '#36D6C5', alignItems: 'center', justifyContent: 'center', marginVertical: 8 }, pttButtonActive: { backgroundColor: '#FFA76B' }, wave: { height: 11, flexDirection: 'row', alignItems: 'center', gap: 2, marginTop: 4 }, waveBar: { width: 2, height: 10, borderRadius: 2 }, pttHint: { color: '#7689A4', fontSize: 10 }, bottomBar: { height: 67, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-around', borderTopWidth: 1, borderTopColor: '#13253C', backgroundColor: '#091625' }, tab: { alignItems: 'center', gap: 4, minWidth: 80 }, tabLabel: { color: '#62738D', fontSize: 10 }, tabLabelActive: { color: '#36D6C5', fontWeight: '800' }, roundButton: { width: 39, height: 39, borderRadius: 13, backgroundColor: '#102B35', alignItems: 'center', justifyContent: 'center' }, updateBanner: { flexDirection: 'row', alignItems: 'center', gap: 9, padding: 10, margin: 10, borderRadius: 14, backgroundColor: '#163436', borderWidth: 1, borderColor: '#2C6E66' }, updateIcon: { width: 34, height: 34, borderRadius: 11, backgroundColor: '#36D6C5', alignItems: 'center', justifyContent: 'center' }, updateTitle: { color: '#8DF5E7', fontWeight: '800', fontSize: 12 }, updateText: { color: '#9AB2B5', fontSize: 9, marginTop: 3 }, updateButton: { paddingHorizontal: 9, paddingVertical: 8, borderRadius: 9, backgroundColor: '#36D6C5' }, updateButtonText: { color: '#07111F', fontSize: 8, fontWeight: '900' }, drawerOverlay: { flex: 1, backgroundColor: '#00000088' }, drawer: { width: '82%', height: '100%', backgroundColor: '#0B192A', padding: 22, paddingTop: 58, borderRightWidth: 1, borderRightColor: '#243B59' }, drawerBrand: { flexDirection: 'row', alignItems: 'center', gap: 9, marginBottom: 7 }, brandMark: { width: 20, height: 20, borderRadius: 6, backgroundColor: '#36D6C5', alignItems: 'center', justifyContent: 'center' }, drawerVersion: { color: '#62738D', fontSize: 10, marginBottom: 24 }, drawerLine: { height: 1, backgroundColor: '#172943', marginBottom: 11 }, drawerItem: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 15, borderBottomWidth: 1, borderBottomColor: '#13253C' }, drawerLabel: { color: '#D9E2EF', flex: 1, fontSize: 13, fontWeight: '600' }, dangerLink: { color: '#FF7C91', fontWeight: '900', fontSize: 9 }
 });
