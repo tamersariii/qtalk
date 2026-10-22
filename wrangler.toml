@@ -1,0 +1,12 @@
+name = "qtalk-api"
+main = "functions/worker.js"
+compatibility_date = "2026-10-22"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "qtalk-db"
+database_id = "05284561-fb7f-4279-84dd-061546979553"
+migrations_dir = "cloudflare/migrations"
+
+[observability]
+enabled = true

@@ -1,0 +1,41 @@
+module.exports = {
+  expo: {
+    name: 'QTalK',
+    slug: 'qtalk',
+    version: '0.1.0',
+    orientation: 'portrait',
+    scheme: 'qtalk',
+    userInterfaceStyle: 'dark',
+    icon: './assets/qtalk-icon.png',
+    splash: {
+      image: './assets/qtalk-icon.png',
+      resizeMode: 'contain',
+      backgroundColor: '#07111F'
+    },
+    android: {
+      package: 'com.tamersariii.qtalk',
+      adaptiveIcon: {
+        foregroundImage: './assets/qtalk-icon.png',
+        backgroundColor: '#07111F'
+      },
+      permissions: [
+        'RECORD_AUDIO',
+        'BLUETOOTH',
+        'BLUETOOTH_ADMIN',
+        'BLUETOOTH_SCAN',
+        'BLUETOOTH_CONNECT',
+        'ACCESS_FINE_LOCATION',
+        'READ_CONTACTS',
+        'POST_NOTIFICATIONS'
+      ]
+    },
+    plugins: [
+      'expo-notifications',
+      'expo-contacts',
+      'expo-av'
+    ],
+    extra: {
+      apiUrl: process.env.QTALK_API_URL || 'https://qtalk-api.example.workers.dev'
+    }
+  }
+};
