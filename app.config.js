@@ -2,7 +2,7 @@ module.exports = {
   expo: {
     name: 'QTalK',
     slug: 'qtalk',
-    version: '0.1.1',
+    version: '0.1.2',
     orientation: 'portrait',
     scheme: 'qtalk',
     userInterfaceStyle: 'dark',
