@@ -1,6 +1,6 @@
 {
   "name": "qtalk",
-  "version": "0.1.2",
+  "version": "0.2.0",
   "private": true,
   "main": "node_modules/expo/AppEntry.js",
   "scripts": {
@@ -14,13 +14,14 @@
   "dependencies": {
     "@config-plugins/react-native-webrtc": "^13.0.0",
     "@expo/vector-icons": "^14.1.0",
-    "@react-native-async-storage/async-storage": "^2.1.2",
+    "@react-native-async-storage/async-storage": "2.2.0",
     "expo": "^54.0.0",
     "expo-av": "^16.0.5",
     "expo-contacts": "^14.1.0",
     "expo-device": "^7.1.4",
     "expo-file-system": "~18.1.10",
     "expo-font": "~14.0.12",
+    "expo-image-picker": "~17.0.11",
     "expo-intent-launcher": "~13.0.8",
     "expo-notifications": "^0.32.12",
     "expo-status-bar": "^2.0.1",

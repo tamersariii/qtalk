@@ -2,7 +2,7 @@ module.exports = {
   expo: {
     name: 'QTalK',
     slug: 'qtalk',
-    version: '0.1.2',
+    version: '0.2.0',
     orientation: 'portrait',
     scheme: 'qtalk',
     userInterfaceStyle: 'dark',
@@ -34,6 +34,7 @@ module.exports = {
       'expo-notifications',
       'expo-contacts',
       'expo-av',
+      'expo-image-picker',
       '@config-plugins/react-native-webrtc'
     ],
     extra: {

@@ -23,6 +23,15 @@ export default {
 
     try {
       if (url.pathname === '/health') return json({ ok: true, service: 'qtalk-api', realtime: '/ws/:channelId' });
+      if (url.pathname === '/auth/email' && request.method === 'POST') return emailAuth(request, env);
+      if (url.pathname === '/auth/google/start' && request.method === 'GET') {
+        if (!env.GOOGLE_CLIENT_ID) return json({ error: 'Google OAuth henüz yapılandırılmadı.' }, 503);
+        const redirect = url.searchParams.get('redirect_uri') || env.GOOGLE_REDIRECT_URI;
+        const state = crypto.randomUUID();
+        const target = new URL('https://accounts.google.com/o/oauth2/v2/auth');
+        target.search = new URLSearchParams({ client_id: env.GOOGLE_CLIENT_ID, redirect_uri: redirect, response_type: 'code', scope: 'openid email profile', state }).toString();
+        return Response.redirect(target.toString(), 302);
+      }
       if (url.pathname === '/channels' && request.method === 'GET') {
         return json(await env.DB.prepare('SELECT id, name, member_count FROM channels ORDER BY name').all());
       }
@@ -115,4 +124,29 @@ function json(data, status = 200) {
     status,
     headers: { ...cors, 'content-type': 'application/json; charset=utf-8' }
   });
+}
+
+async function digest(value) {
+  const bytes = new TextEncoder().encode(value);
+  const hash = await crypto.subtle.digest('SHA-256', bytes);
+  return [...new Uint8Array(hash)].map((x) => x.toString(16).padStart(2, '0')).join('');
+}
+
+async function emailAuth(request, env) {
+  const body = await request.json();
+  const email = String(body.email || '').trim().toLowerCase();
+  const password = String(body.password || '');
+  const displayName = String(body.displayName || email.split('@')[0]).trim().slice(0, 80);
+  if (!/^\S+@\S+\.\S+$/.test(email) || password.length < 8) return json({ error: 'Geçerli bir e-posta ve en az 8 karakterli parola girin.' }, 400);
+  let user = await env.DB.prepare('SELECT id, display_name, email, password_salt, password_hash, avatar_url FROM users WHERE email = ?').bind(email).first();
+  if (!user) {
+    const salt = crypto.randomUUID();
+    const id = crypto.randomUUID();
+    const hash = await digest(`${salt}:${password}`);
+    await env.DB.prepare('INSERT INTO users (id, display_name, email, password_salt, password_hash) VALUES (?, ?, ?, ?, ?)').bind(id, displayName, email, salt, hash).run();
+    user = { id, display_name: displayName, email, password_salt: salt, password_hash: hash, avatar_url: null };
+  } else if (user.password_hash !== await digest(`${user.password_salt}:${password}`)) return json({ error: 'E-posta veya parola hatalı.' }, 401);
+  const token = crypto.randomUUID();
+  await env.DB.prepare("INSERT INTO sessions (token, user_id, expires_at) VALUES (?, ?, datetime('now', '+30 days'))").bind(token, user.id).run();
+  return json({ token, user: { id: user.id, name: user.display_name, email: user.email, avatarUrl: user.avatar_url || null } });
 }
