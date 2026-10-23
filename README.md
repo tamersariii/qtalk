@@ -10,13 +10,13 @@ Gerçek zamanlı kanal sinyalizasyonu için Cloudflare Durable Objects tabanlı 
 
 ## Android APK indir
 
-Doğrudan indirme: [QTalK v0.2.0 WebRTC APK](https://github.com/tamersariii/qtalk/releases/download/v0.2.0/qtalk-webrtc.apk)
+Doğrudan indirme: [QTalK v0.2.1 WebRTC APK](https://github.com/tamersariii/qtalk/releases/download/v0.2.1/qtalk-webrtc.apk)
 
 Telefon kamerasıyla taramak için:
 
 ![QTalK APK indirme QR kodu](assets/qtalk-apk-qr.png)
 
-Alternatif olarak [GitHub Release sayfasını](https://github.com/tamersariii/qtalk/releases/tag/v0.2.0) açabilirsiniz.
+Alternatif olarak [GitHub Release sayfasını](https://github.com/tamersariii/qtalk/releases/tag/v0.2.1) açabilirsiniz.
 
 ## QTalK sitesi
 
