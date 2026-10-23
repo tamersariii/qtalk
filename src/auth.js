@@ -1,4 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { GoogleSignin } from '@react-native-google-signin/google-signin';
 
 const SESSION_KEY = 'qtalk.session';
 
@@ -20,6 +21,7 @@ export async function signInWithEmail(apiUrl, email, password, displayName) {
 }
 
 export async function signOut() {
+  try { await GoogleSignin.signOut(); } catch {}
   await AsyncStorage.removeItem(SESSION_KEY);
 }
 
@@ -29,6 +31,13 @@ export async function saveProfile(session, profile) {
   return next;
 }
 
-export function googleSignInUrl(apiUrl) {
-  return `${apiUrl}/auth/google/start?redirect_uri=qtalk%3A%2F%2Fauth`;
+export async function signInWithGoogle() {
+  GoogleSignin.configure({ offlineAccess: false });
+  await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
+  const result = await GoogleSignin.signIn();
+  const user = result?.data?.user || result?.user;
+  if (!user?.email) throw new Error('Google hesabı bilgisi alınamadı.');
+  const session = { token: result?.data?.idToken || result?.idToken || `google-local-${Date.now()}`, provider: 'google', user: { id: user.id, name: user.name || user.givenName || user.email.split('@')[0], email: user.email, avatarUrl: user.photo || null } };
+  await AsyncStorage.setItem(SESSION_KEY, JSON.stringify(session));
+  return session;
 }

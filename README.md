@@ -1,12 +1,12 @@
 # QTalK
 
-Şık ve sade Android bas-konuş uygulaması. İnternet kanalları, Bluetooth yakın alan keşfi, kişi listesi ve bildirim altyapısı içerir.
+Şık ve sade React Native/Expo bas-konuş uygulaması. İnternet üzerinden WebRTC, Bluetooth yakın alan keşfi, kişi listesi, ses kayıtları, profil ve tema seçenekleri içerir.
 
 ## Durum
 
-Bu repo, QTalK’ın ilk çalışan yerel prototipidir. Arayüz ve Android izin akışları hazırdır. Cloudflare Worker + D1 backend kaynakları `functions/` ve `cloudflare/` altındadır.
+QTalK Android ve iOS için aynı React Native kod tabanını kullanır. Android APK CI üzerinden üretilir; iOS için native bundle kimliği ve Google Sign-In config’i hazırdır. Cloudflare Worker + D1 backend kaynakları `functions/` ve `cloudflare/` altındadır.
 
-Gerçek zamanlı kanal sinyalizasyonu için Cloudflare Durable Objects tabanlı hibernation WebSocket katmanı `/ws/:channelId` uç noktasına eklendi. Ayrıntılar: [Gerçek zamanlı iletişim](docs/REALTIME.md).
+Gerçek zamanlı kanal sinyalizasyonu için Cloudflare Durable Objects tabanlı WebSocket katmanı `/ws/:channelId` uç noktasına eklendi. Ayrıntılar: [Gerçek zamanlı iletişim](docs/REALTIME.md).
 
 ## Android APK indir
 
@@ -18,6 +18,10 @@ Telefon kamerasıyla taramak için:
 
 Alternatif olarak [GitHub Release sayfasını](https://github.com/tamersariii/qtalk/releases/tag/v0.2.0) açabilirsiniz.
 
+## QTalK sitesi
+
+GitHub Pages sitesi: [QTalK uygulama sitesi](https://tamersariii.github.io/qtalk/)
+
 ## Kurulum
 
 ```bash
@@ -25,23 +29,34 @@ npm install
 npx expo start
 ```
 
-Bluetooth için Expo Go yerine native development build gerekir; `react-native-ble-plx` native modül kullanır.
+Bluetooth ve native Google hesap seçici için Expo Go yerine native development build gerekir. `@react-native-google-signin/google-signin` Android’de cihaz hesap seçicisini, iOS’ta native Google account flow’u kullanır; tarayıcı OAuth fallback’i kullanılmaz.
+
+Google’ın üretim için istemci kimlikleri ve Android SHA-1/iOS URL scheme ayarları ayrıca tanımlanmalıdır. Bu değerler olmadan uygulama, kullanıcıya yapılandırma uyarısı gösterir.
 
 ## Cloudflare
 
-1. `cloudflare/migrations/0001_initial.sql` ile D1 şemasını uygulayın.
+1. `cloudflare/migrations/0001_initial.sql` ve `0002_auth_profiles.sql` ile D1 şemasını uygulayın.
 2. `wrangler.toml` içindeki `database_id` değerini gerçek D1 ID ile değiştirin.
 3. `npx wrangler deploy` çalıştırın.
 4. Mobil uygulamada `QTALK_API_URL` değişkenini Worker URL’i ile ayarlayın.
 
 ## Android paketleme
 
-Sandbox içinde Android SDK/Gradle bulunmadığı için burada doğrudan signed APK üretilmesi garanti değildir. Android SDK ve keystore bulunan CI veya geliştirici makinesinde:
-
 ```bash
 npx expo prebuild --platform android
 cd android && ./gradlew assembleRelease
 ```
+
+## iOS paketleme
+
+Apple Developer hesabı ve macOS/Xcode veya EAS hesabı gerekir:
+
+```bash
+npx expo prebuild --platform ios
+npx expo run:ios
+```
+
+TestFlight/App Store yayını için Apple imzalama bilgileri gereklidir. GitHub Pages sitesi iOS TestFlight bağlantısını, bağlantı oluşturulduğunda aktif hale getirecek şekilde hazırlanmıştır.
 
 ## Gizlilik ve lisans
 

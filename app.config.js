@@ -2,11 +2,16 @@ module.exports = {
   expo: {
     name: 'QTalK',
     slug: 'qtalk',
-    version: '0.2.0',
+    version: '0.2.1',
     orientation: 'portrait',
     scheme: 'qtalk',
     userInterfaceStyle: 'dark',
     icon: './assets/qtalk-icon.png',
+    ios: {
+      bundleIdentifier: 'com.tamersariii.qtalk',
+      supportsTablet: true,
+      infoPlist: { NSMicrophoneUsageDescription: 'QTalK bas-konuş ses iletişimi için mikrofona erişir.', NSPhotoLibraryUsageDescription: 'Profil fotoğrafı seçebilmeniz için fotoğraf kitaplığına erişir.' }
+    },
     splash: {
       image: './assets/qtalk-icon.png',
       resizeMode: 'contain',
@@ -35,6 +40,7 @@ module.exports = {
       'expo-contacts',
       'expo-av',
       'expo-image-picker',
+      '@react-native-google-signin/google-signin',
       '@config-plugins/react-native-webrtc'
     ],
     extra: {
